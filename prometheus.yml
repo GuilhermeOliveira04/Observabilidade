@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: checkout
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["checkout:9464"]
+
+  - job_name: payment
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["payment:9464"]
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
