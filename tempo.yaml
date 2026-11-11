@@ -14,7 +14,7 @@ distributor:
           endpoint: 0.0.0.0:4318
 
 ingester:
-  trace_idle_period: 10s
+  trace_idle_period: 5s
   max_block_duration: 1m
 
 compactor:
@@ -35,6 +35,7 @@ metrics_generator:
       dimensions:
         - payment.scenario
   registry:
+    collection_interval: 5s
     external_labels:
       source: tempo
   storage:

@@ -116,6 +116,7 @@ services:
     command: ["python", "loadgen.py"]
     environment:
       CHECKOUT_URL: http://checkout:8000/checkout
+      LOADGEN_SCENARIO: fast
     depends_on:
       checkout:
         condition: service_healthy

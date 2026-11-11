@@ -5,6 +5,7 @@ import time
 import httpx
 
 CHECKOUT_URL = os.getenv("CHECKOUT_URL", "http://checkout:8000/checkout")
+SCENARIO = os.getenv("LOADGEN_SCENARIO", "fast")
 TIMEOUT = httpx.Timeout(15.0, connect=2.0)
 
 
@@ -13,7 +14,7 @@ def main() -> None:
         while True:
             started = time.perf_counter()
             try:
-                response = client.post(CHECKOUT_URL)
+                response = client.post(CHECKOUT_URL, params={"scenario": SCENARIO})
                 print(f"{response.status_code} {response.text[:300]}", flush=True)
             except httpx.HTTPError as exc:
                 print(f"request failed: {exc}", flush=True)
