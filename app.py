@@ -201,6 +201,15 @@ def bind_worker_profile(span=None):
         pyroscope.remove_thread_tag("trace_id", trace_id)
 
 
+@contextmanager
+def profile_scenario(scenario: str):
+    pyroscope.add_thread_tag("scenario", scenario)
+    try:
+        yield
+    finally:
+        pyroscope.remove_thread_tag("scenario", scenario)
+
+
 def run_heavy_fraud_check(duration_s: float) -> None:
     deadline = time.perf_counter() + duration_s
     state = 0x12345678
@@ -215,18 +224,19 @@ def run_heavy_fraud_check(duration_s: float) -> None:
 
 def run_payment(scenario: str) -> tuple[int, dict]:
     tracer = trace.get_tracer("shop")
+    log_extra = {"scenario": scenario}
     if scenario == "fast":
         with tracer.start_as_current_span("payment.fast") as span:
             span.set_attribute("payment.scenario", scenario)
             time.sleep(random.uniform(0.05, 0.2))
-        logger.info("Payment processed successfully")
+        logger.info("Payment processed successfully", extra=log_extra)
         return 200, {"status": "paid", "scenario": scenario}
 
     if scenario == "io":
         with tracer.start_as_current_span("payment.io") as span:
             span.set_attribute("payment.scenario", scenario)
             time.sleep(random.uniform(1.5, 3.0))
-        logger.warning("Payment gateway high latency detected")
+        logger.warning("Payment gateway high latency detected", extra=log_extra)
         return 200, {"status": "paid", "scenario": scenario}
 
     if scenario == "db":
@@ -236,7 +246,7 @@ def run_payment(scenario: str) -> tuple[int, dict]:
             error = TimeoutError("Database connection timeout - pool exhausted")
             span.record_exception(error)
             span.set_status(Status(StatusCode.ERROR, str(error)))
-        logger.error("Database connection timeout - pool exhausted")
+        logger.error("Database connection timeout - pool exhausted", extra=log_extra)
         raise HTTPException(
             status_code=500,
             detail="Database connection timeout - pool exhausted",
@@ -252,9 +262,9 @@ def run_payment(scenario: str) -> tuple[int, dict]:
         span.set_attribute("fraud.cpu_seconds", elapsed)
         if elapsed > FRAUD_SLA_SECONDS:
             span.set_status(Status(StatusCode.ERROR, "Fraud check exceeded CPU budget"))
-            logger.error("Fraud check exceeded CPU budget")
+            logger.error("Fraud check exceeded CPU budget", extra=log_extra)
             raise HTTPException(status_code=500, detail="Fraud check exceeded CPU budget")
-    logger.info("Fraud check completed")
+    logger.info("Fraud check completed", extra=log_extra)
     return 200, {
         "status": "paid",
         "scenario": scenario,
@@ -288,7 +298,8 @@ def payment(scenario: str | None = Query(default=None)) -> JSONResponse:
             chosen = resolve_scenario(scenario)
             current = trace.get_current_span()
             current.set_attribute("payment.scenario", chosen)
-            status_code, body = run_payment(chosen)
+            with profile_scenario(chosen):
+                status_code, body = run_payment(chosen)
             return JSONResponse(
                 content=body,
                 headers={"X-Payment-Scenario": chosen},
@@ -333,13 +344,13 @@ def checkout(scenario: str | None = Query(default=None)) -> dict:
                 detail = error_detail(response)
                 status_code = 502
                 current.set_status(Status(StatusCode.ERROR, detail))
-                logger.error("Payment failed: %s", detail)
+                logger.error("Payment failed: %s", detail, extra={"scenario": chosen})
                 raise HTTPException(status_code=502, detail=detail)
 
             body = response.json()
             chosen = str(body.get("scenario", chosen))
             current.set_attribute("payment.scenario", chosen)
-            logger.info("Checkout completed scenario=%s", chosen)
+            logger.info("Checkout completed scenario=%s", chosen, extra={"scenario": chosen})
             return {"status": "accepted", "payment": body}
     except HTTPException as exc:
         status_code = exc.status_code

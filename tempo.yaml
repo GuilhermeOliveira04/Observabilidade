@@ -30,6 +30,10 @@ storage:
       path: /var/tempo/blocks
 
 metrics_generator:
+  processor:
+    span_metrics:
+      dimensions:
+        - payment.scenario
   registry:
     external_labels:
       source: tempo

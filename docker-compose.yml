@@ -88,7 +88,7 @@ services:
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
       OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://loki:3100/otlp/v1/logs
     ports:
-      - "8000:8000"
+      - "8080:8000"
     cap_add:
       - SYS_PTRACE
     security_opt:

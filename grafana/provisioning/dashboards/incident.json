@@ -4,28 +4,52 @@
   "tags": ["observability", "demo", "lgtm"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
-  "refresh": "5s",
+  "version": 3,
+  "refresh": "",
   "graphTooltip": 1,
   "time": { "from": "now-15m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "scenario",
+        "label": "Filtrar Cenário",
+        "type": "custom",
+        "query": "fast,io,db,cpu",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
+        "options": [
+          { "selected": true, "text": "All", "value": "$__all" },
+          { "selected": false, "text": "fast", "value": "fast" },
+          { "selected": false, "text": "io", "value": "io" },
+          { "selected": false, "text": "db", "value": "db" },
+          { "selected": false, "text": "cpu", "value": "cpu" }
+        ]
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
       "type": "text",
-      "title": "Guia Rápido da Demonstração (Fluxo de Investigação e Comandos de Teste)",
+      "title": "Guia Interativo da Demonstração (Auto-Refresh desligado — use o botão Refresh ou escolha 30s no topo)",
       "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "### Jornada de Diagnóstico: **1. Sintoma (Métricas)** ➔ **2. Isolamento (Trace via Exemplar ★)** ➔ **3. Contexto (Logs no Loki)** ➔ **4. Código (Flamegraph no Pyroscope)**\n| Cenário | Comportamento | Como identificar no Dashboard | Comando para forçar no terminal |\n| :--- | :--- | :--- | :--- |\n| 🟢 **fast** (40%) | Resposta rápida (50–200ms), HTTP 200 | Barras verdes no gráfico de tráfego | `curl -X POST \"http://localhost:8000/checkout?scenario=fast\"` |\n| 🟡 **io** (20%) | Espera de 1.5s–3.0s (Gateway lento), HTTP 200 | P95 sobe, Trace longo em `payment.io`, **Flamegraph limpo** | `curl -X POST \"http://localhost:8000/checkout?scenario=io\"` |\n| 🔴 **db** (20%) | Erro HTTP 500 (Pool de banco esgotado) | Taxa 5xx sobe, Log **ERROR** `Database connection timeout` | `curl -X POST \"http://localhost:8000/checkout?scenario=db\"` |\n| 🟣 **cpu** (20%) | Loop pesado de antifraude (0.5s–1.0s, >0.8s dá 500) | Função `run_heavy_fraud_check` **domina o Flamegraph de CPU** | `curl -X POST \"http://localhost:8000/checkout?scenario=cpu\"` |"
+        "content": "### Fluxo: **1. Sintoma (Métricas)** ➔ **2. Isolamento (Service Graph & Traces)** ➔ **3. Contexto (Logs no Loki)** ➔ **4. Código (Pyroscope)**\n💡 **Filtro:** o seletor **Filtrar Cenário** no topo vale para **todos** os painéis (métricas, traces, logs e profiling). Nos gráficos `2A` e `2B`, clique numa barra e escolha **Filtrar Dashboard** no menu que aparece.\n| Cenário | Comportamento | O que observar | Comando para disparar ao vivo |\n| :--- | :--- | :--- | :--- |\n| 🟢 **fast** (40%) | Rápido (50–200ms), HTTP 200 | P95 baixo (~0.18s), sem erros | `curl -X POST \"http://localhost:8080/checkout?scenario=fast\"` |\n| 🟡 **io** (20%) | Gateway lento (1.5s–3.0s), HTTP 200 | Maior vilão do P95, **mas o Flamegraph fica quase vazio** (espera não gasta CPU) | `curl -X POST \"http://localhost:8080/checkout?scenario=io\"` |\n| 🔴 **db** (20%) | Erro HTTP 500 (Pool esgotado) | 5xx em 100% no filtro, 502 em cascata no checkout, Log `Database connection timeout` | `curl -X POST \"http://localhost:8080/checkout?scenario=db\"` |\n| 🟣 **cpu** (20%) | Loop antifraude (0.5s–1.0s, >0.8s dá 500) | Função `run_heavy_fraud_check` no topo da **Top Table / Flamegraph** | `curl -X POST \"http://localhost:8080/checkout?scenario=cpu\"` |"
       }
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "1A. Volume de Tráfego (/payment)",
-      "description": "Total de requisições por segundo processadas pelo serviço de pagamento.",
+      "title": "1A. Volume de Tráfego (Cenário: $scenario)",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 5 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 5 },
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
@@ -42,7 +66,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_server_requests_total{route=\"/payment\"}[1m]))",
+          "expr": "sum(rate(http_server_requests_total{route=\"/payment\",scenario=~\"$scenario\"}[1m]))",
           "legendFormat": "req/s"
         }
       ]
@@ -50,10 +74,9 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "1B. Taxa de Erros HTTP 5xx (Sintoma de Falha)",
-      "description": "Soma das falhas de banco (db = 20%) + falhas de antifraude que passam de 0.8s (cpu = ~8%).",
+      "title": "1B. Taxa de Erros HTTP 5xx (Cenário: $scenario)",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 5 },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 5 },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -79,17 +102,16 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * sum(rate(http_server_requests_total{route=\"/payment\",status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_requests_total{route=\"/payment\"}[5m])), 1e-9)"
+          "expr": "100 * (sum(rate(http_server_requests_total{route=\"/payment\",scenario=~\"$scenario\",status_code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_server_requests_total{route=\"/payment\",scenario=~\"$scenario\"}[5m])), 1e-9)"
         }
       ]
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "1C. Latência P95 Atual (SLA)",
-      "description": "95% das requisições respondem abaixo deste tempo. Puxado para cima pelos cenários de I/O (até 3s) e Banco (até 1.5s).",
+      "title": "1C. Latência P95 (Cenário: $scenario)",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 5 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 5 },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -98,8 +120,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "orange", "value": 1.0 },
-              { "color": "red", "value": 2.0 }
+              { "color": "orange", "value": 0.8 },
+              { "color": "red", "value": 1.5 }
             ]
           }
         },
@@ -113,18 +135,101 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{route=\"/payment\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{route=\"/payment\",scenario=~\"$scenario\"}[5m])))",
           "legendFormat": "P95"
         }
       ]
     },
     {
       "id": 5,
-      "type": "timeseries",
-      "title": "2A. Distribuição de Tráfego por Cenário (fast, io, db, cpu)",
-      "description": "Mostra a proporção em tempo real de cada cenário sendo executado na API de pagamento.",
+      "type": "stat",
+      "title": "1D. Erros 502 no Checkout — Cascata (Cenário: $scenario)",
+      "description": "Mostra quantas falhas do serviço payment refletiram como erro 502 Bad Gateway para o cliente no checkout.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 25 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (sum(rate(http_server_requests_total{route=\"/checkout\",scenario=~\"$scenario\",status_code=\"502\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_server_requests_total{route=\"/checkout\",scenario=~\"$scenario\"}[5m])), 1e-9)"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "bargauge",
+      "title": "2A. Quem é o vilão da lentidão? (Latência P95 por Cenário — Clique para Filtrar)",
+      "description": "Clique na barra de qualquer cenário para filtrar todo o dashboard por ele!",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "min": 0,
+          "max": 3.2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.4 },
+              { "color": "orange", "value": 0.8 },
+              { "color": "red", "value": 1.5 }
+            ]
+          },
+          "links": [
+            {
+              "title": "Filtrar Dashboard pelo cenário: ${__field.labels.scenario}",
+              "url": "/d/incident-resolution?var-scenario=${__field.labels.scenario}&${__url_time_range}"
+            },
+            {
+              "title": "Limpar Filtro (Mostrar Todos)",
+              "url": "/d/incident-resolution?var-scenario=$__all&${__url_time_range}"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "valueMode": "color",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, scenario) (rate(http_server_request_duration_seconds_bucket{route=\"/payment\"}[5m])))",
+          "legendFormat": "{{scenario}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "2B. Volume de Requisições por Cenário (Clique na barra para filtrar)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 9 },
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
@@ -132,7 +237,17 @@
             "drawStyle": "bars",
             "stacking": { "mode": "normal" },
             "fillOpacity": 85
-          }
+          },
+          "links": [
+            {
+              "title": "Filtrar Dashboard por ${__field.labels.scenario}",
+              "url": "/d/incident-resolution?var-scenario=${__field.labels.scenario}&${__url_time_range}"
+            },
+            {
+              "title": "Mostrar Todos os Cenários",
+              "url": "/d/incident-resolution?var-scenario=$__all&${__url_time_range}"
+            }
+          ]
         },
         "overrides": [
           {
@@ -154,24 +269,24 @@
         ]
       },
       "options": {
-        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull"] },
-        "tooltip": { "mode": "multi" }
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (scenario) (rate(http_server_requests_total{route=\"/payment\"}[1m]))",
+          "expr": "sum by (scenario) (rate(http_server_requests_total{route=\"/payment\",scenario=~\"$scenario\"}[1m]))",
           "legendFormat": "{{scenario}}"
         }
       ]
     },
     {
-      "id": 6,
+      "id": 8,
       "type": "timeseries",
-      "title": "2B. Latência P95 + Exemplars Clicáveis (Ponte Métrica ➔ Trace)",
-      "description": "Passe o mouse sobre os losangos (Exemplars) e clique no link do Tempo para abrir o Trace exato da requisição!",
+      "title": "2C. Latência P95 + Exemplars Clicáveis (Métrica ➔ Trace)",
+      "description": "Passe o mouse sobre os losangos (Exemplars) e clique para abrir o Trace no Tempo.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 9 },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -190,28 +305,65 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{service=\"payment\",span_kind=\"SPAN_KIND_SERVER\"}[5m])))",
-          "legendFormat": "P95 via Tempo SpanMetrics (Clique nos losangos ★)",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{service=\"payment\",span_kind=\"SPAN_KIND_SERVER\",payment_scenario=~\"$scenario\"}[5m])))",
+          "legendFormat": "P95 via Tempo SpanMetrics — $scenario (Losangos = Exemplars ★)",
           "exemplar": true
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{route=\"/payment\"}[5m])))",
-          "legendFormat": "P95 via Aplicação FastAPI",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{route=\"/payment\",scenario=~\"$scenario\"}[5m])))",
+          "legendFormat": "P95 via Aplicação — $scenario",
           "exemplar": false
         }
       ]
     },
     {
-      "id": 7,
+      "id": 9,
+      "type": "nodeGraph",
+      "title": "3A. Topologia da Arquitetura (Service Graph via Tempo)",
+      "description": "Mapa gerado automaticamente a partir dos Traces distribuídos entre checkout e payment.",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "h": 8, "w": 10, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "serviceMap"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "3B. Tabela de Traces Recentes no Tempo (Clique no Trace ID para abrir a Cascata)",
+      "description": "Lista de requisições filtradas pelo cenário selecionado ($scenario). Clique no Trace ID azul para inspecionar os spans!",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "h": 8, "w": 14, "x": 10, "y": 16 },
+      "options": {
+        "showHeader": true,
+        "footer": { "show": false }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"payment\" && span.payment.scenario =~ \"${scenario:pipe}\" }",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 11,
       "type": "logs",
-      "title": "3. Logs de Alerta e Erro em Tempo Real (Loki — Apenas Anomalias)",
-      "description": "Filtra apenas WARNING e ERROR. Clique em qualquer linha para expandir e ver o botão que abre o Trace no Tempo!",
+      "title": "4A. Logs de Alerta e Erro no Loki (Cenário: $scenario)",
+      "description": "Exibe WARNING e ERROR do cenário selecionado. Expanda uma linha e use o link TraceID para abrir o trace no Tempo.",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 11, "w": 12, "x": 0, "y": 18 },
+      "gridPos": { "h": 11, "w": 11, "x": 0, "y": 24 },
       "options": {
         "showTime": true,
-        "showLabels": true,
+        "showLabels": false,
         "wrapLogMessage": true,
         "dedupStrategy": "none",
         "sortOrder": "Descending",
@@ -220,20 +372,23 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service_name=~\"payment|checkout\"} |~ \"Payment gateway high latency detected|Database connection timeout - pool exhausted|Fraud check exceeded CPU budget|Payment failed\""
+          "expr": "{service_name=~\"payment|checkout\"} | scenario=~\"${scenario:pipe}\" |~ \"Payment gateway high latency detected|Database connection timeout - pool exhausted|Fraud check exceeded CPU budget|Payment failed\""
         }
       ]
     },
     {
-      "id": 8,
+      "id": 12,
       "type": "flamegraph",
-      "title": "4. Continuous Profiling — Onde a CPU está sendo gasta? (Pyroscope)",
-      "description": "Procure pela barra 'run_heavy_fraud_check'. Note que o time.sleep dos cenários 'io' e 'db' não consome CPU!",
+      "title": "4B. Continuous Profiling — Top Table + Flamegraph (Cenário: $scenario)",
+      "description": "CPU gasta pelo payment no cenário selecionado. Em cpu, run_heavy_fraud_check domina; em io/db quase não há amostras, porque esperar não consome CPU.",
       "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
-      "gridPos": { "h": 11, "w": 12, "x": 12, "y": 18 },
+      "gridPos": { "h": 11, "w": 13, "x": 11, "y": 24 },
+      "options": {
+        "displayMode": "both"
+      },
       "links": [
         {
-          "title": "Abrir Flamegraph em Tela Cheia (Explore)",
+          "title": "Abrir Pyroscope no Explore",
           "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22pyro%22%3A%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22grafana-pyroscope-datasource%22%2C%22uid%22%3A%22pyroscope%22%7D%2C%22queryType%22%3A%22profile%22%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22labelSelector%22%3A%22%7Bservice_name%3D%5C%22payment%5C%22%7D%22%7D%5D%7D%7D",
           "targetBlank": true
         }
@@ -244,7 +399,7 @@
           "datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
           "queryType": "profile",
           "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-          "labelSelector": "{service_name=\"payment\"}"
+          "labelSelector": "{service_name=\"payment\", scenario=~\"${scenario:pipe}\"}"
         }
       ]
     }
